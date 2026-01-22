@@ -202,7 +202,7 @@ PLANET_COMPACT_RE = re.compile(
     (?P<planet>[A-Za-zÇĞİÖŞÜçğıöşü]+)
     (?P<sign>[A-Za-zÇĞİÖŞÜçğıöşü♈♉♊♋♌♍♎♏♐♑♒♓]+)
     (?P<deg>\d{1,2})\s*°\s*
-    (?P<min>\d{1,2})\s*[’'′]
+    (?P<min>\d{1,2})\D+
     (?P<house>\d{1,2})
     \s*$""",
     re.VERBOSE | re.IGNORECASE
