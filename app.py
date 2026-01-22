@@ -13,7 +13,7 @@ SIGN_ALIASES = {
     "Aries": "Koç", "Taurus": "Boğa", "Gemini": "İkizler", "Cancer": "Yengeç",
     "Leo": "Aslan", "Virgo": "Başak", "Libra": "Terazi", "Scorpio": "Akrep",
     "Sagittarius": "Yay", "Capricorn": "Oğlak", "Aquarius": "Kova", "Pisces": "Balık",
-    # TR
+    # TR variants
     "Koç": "Koç", "Koc": "Koç",
     "Boğa": "Boğa", "Boga": "Boğa",
     "İkizler": "İkizler", "Ikizler": "İkizler",
@@ -32,38 +32,31 @@ SIGN_ALIASES = {
     "♐": "Yay", "♑": "Oğlak", "♒": "Kova", "♓": "Balık",
 }
 
-# Gezegenleri TÜRKÇE anahtara normalize edeceğiz
-PLANET_ALIASES = {
-    # EN -> TR
-    "Sun": "Güneş",
-    "Moon": "Ay",
-    "Mercury": "Merkür",
-    "Venus": "Venüs",
-    "Mars": "Mars",
-    "Jupiter": "Jüpiter",
-    "Saturn": "Satürn",
-    "Uranus": "Uranüs",
-    "Neptune": "Neptün",
-    "Pluto": "Plüton",
-    "Node": "KuzeyAyDüğümü",
-    "Lilith": "Lilith",
-    "Chiron": "Chiron",
-    "Fortune": "Fortuna",
-    "Vertex": "Vertex",
+# Sign "micro meaning" for overlay, short & readable
+SIGN_MICRO = {
+    "Koç": ("hız, cesaret, başlangıç", "Hızlı karar, ilk adımı atma, liderlik dürtüsü."),
+    "Boğa": ("güven, istikrar, somutluk", "Yavaş ama kalıcı ilerleme; kaynakları sağlamlaştırma."),
+    "İkizler": ("iletişim, seçenek, hareket", "Bilgi akışı, bağlantı kurma, çoklu planlar."),
+    "Yengeç": ("aidiyet, koruma, duygu", "Güvenli alan ihtiyacı; duygusal bağ üzerinden ilerler."),
+    "Aslan": ("görünürlük, gurur, yaratıcılık", "Sahne/ifade; takdir ve kalpten motivasyon."),
+    "Başak": ("detay, düzen, verim", "Plan–program, iyileştirme; küçük adımlarla büyütme."),
+    "Terazi": ("denge, ortaklık, uyum", "İşbirliği, adalet; karşılıklı kazanım arar."),
+    "Akrep": ("yoğunluk, dönüşüm, kontrol", "Derinleşme; kriz/bağlılık temasıyla güçlenme."),
+    "Yay": ("vizyon, büyüme, ufuk", "Uzaklar/eğitim/fırsat; risk–ödül dengesi önemli."),
+    "Oğlak": ("hedef, disiplin, yapı", "Uzun vadeli plan; sorumlulukla somut sonuç."),
+    "Kova": ("özgürlük, yenilik, farklılık", "Kalabalıklar/projeler; sıra dışı çözüm üretir."),
+    "Balık": ("sezgi, akış, anlam", "Bırakma–kabullenme; yaratıcı/ruhsal kanal."),
+}
 
-    # TR passthrough
-    "Güneş": "Güneş",
-    "Ay": "Ay",
-    "Merkür": "Merkür",
-    "Venüs": "Venüs",
-    "Mars": "Mars",
-    "Jüpiter": "Jüpiter",
-    "Satürn": "Satürn",
-    "Uranüs": "Uranüs",
-    "Neptün": "Neptün",
-    "Plüton": "Plüton",
-    "KuzeyAyDüğümü": "KuzeyAyDüğümü",
-    "Fortuna": "Fortuna",
+# Planets -> Turkish keys
+PLANET_ALIASES = {
+    "Sun": "Güneş", "Moon": "Ay", "Mercury": "Merkür", "Venus": "Venüs", "Mars": "Mars",
+    "Jupiter": "Jüpiter", "Saturn": "Satürn", "Uranus": "Uranüs", "Neptune": "Neptün", "Pluto": "Plüton",
+    "Node": "KuzeyAyDüğümü", "Lilith": "Lilith", "Chiron": "Chiron", "Fortune": "Fortuna", "Vertex": "Vertex",
+    # passthrough
+    "Güneş": "Güneş", "Ay": "Ay", "Merkür": "Merkür", "Venüs": "Venüs", "Mars": "Mars",
+    "Jüpiter": "Jüpiter", "Satürn": "Satürn", "Uranüs": "Uranüs", "Neptün": "Neptün", "Plüton": "Plüton",
+    "KuzeyAyDüğümü": "KuzeyAyDüğümü", "Fortuna": "Fortuna",
 }
 
 RULERS_MODERN = {
@@ -126,9 +119,6 @@ def overlay_sign(root_sign: str, n: int) -> str:
     idx = SIGN_TO_IDX[root_sign]
     return IDX_TO_SIGN[(idx + (n - 1)) % 12]
 
-def get_ruler(sign: str, system: str) -> str:
-    return (RULERS_MODERN if system == "Modern" else RULERS_TRAD)[sign]
-
 def normalize_sign(token: str):
     token = token.strip()
     if token in SIGN_ALIASES:
@@ -139,13 +129,10 @@ def normalize_sign(token: str):
     return None
 
 def normalize_planet(raw: str) -> str:
-    """
-    Normalize planet to TURKISH keys.
-    Handles 'Node (M)' / 'Lilith (M)' too.
-    """
     raw = raw.strip().strip(":").replace("\t", " ").strip()
     raw_nospace = raw.replace(" ", "")
 
+    # Node / Lilith (M) variants
     if raw_nospace.lower().startswith("node"):
         return PLANET_ALIASES.get("Node", "KuzeyAyDüğümü")
     if raw_nospace.lower().startswith("lilith"):
@@ -160,19 +147,21 @@ def normalize_planet(raw: str) -> str:
     if raw_clean in PLANET_ALIASES:
         return PLANET_ALIASES[raw_clean]
 
-    # fallback: detect english planet substring
     for en in ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Chiron","Fortune","Vertex","Node","Lilith"]:
         if en.lower() in raw_nospace.lower():
             return PLANET_ALIASES.get(en, en)
 
     return raw_clean or raw
 
-# =========================
-# PARSERS
-# =========================
+def get_ruler(sign: str, system: str) -> str:
+    return (RULERS_MODERN if system == "Modern" else RULERS_TRAD)[sign]
 
-# 1) Astro-Seek "spaced" format
-# IMPORTANT: uses \D+ to survive unicode quotes: ’ ″ ’’ etc.
+# =========================
+# PARSERS (Astro-Seek)
+# =========================
+# Spaced format:
+# Sun: Sagittarius 4°26’10’’  end of 7  Direct
+# NOTE: \D+ for unicode quotes
 PLANET_LINE_RE = re.compile(
     r"""^\s*
     (?P<planet>[A-Za-zÇĞİÖŞÜçğıöşü]+(?:\s*\(M\))?)\s*:?\s*
@@ -186,7 +175,8 @@ PLANET_LINE_RE = re.compile(
     re.IGNORECASE | re.VERBOSE
 )
 
-# 2) Astro-Seek "compact" format (no spaces)
+# Compact format:
+# UranusScorpio26°23’7
 PLANET_COMPACT_RE = re.compile(
     r"""^\s*
     (?P<planet>[A-Za-zÇĞİÖŞÜçğıöşü]+)
@@ -208,15 +198,14 @@ def parse_planets_from_text(text: str):
         if not line:
             continue
 
-        # ignore lunar phase line
-        if "Disseminating" in line or "Balsamic" in line or "Gibbous" in line or "Crescent" in line:
+        # ignore lunar phase lines
+        if any(w in line.lower() for w in ["disseminating", "balsamic", "gibbous", "crescent", "phase"]):
             ignored.append(line)
             continue
 
         m = PLANET_LINE_RE.match(line)
         if not m:
             m = PLANET_COMPACT_RE.match(line)
-
         if not m:
             ignored.append(line)
             continue
@@ -274,6 +263,21 @@ ASPECTS_DEF = [
     ("trine", 120, 6),
     ("opposition", 180, 6),
 ]
+ASPECT_WEIGHTS = {"conjunction": 10, "sextile": 8, "trine": 12, "square": -12, "opposition": -14}
+ASPECT_TR_LABEL = {
+    "conjunction": "kavuşum",
+    "sextile": "sekstil",
+    "square": "kare",
+    "trine": "üçgen",
+    "opposition": "karşıt",
+}
+
+def aspect_nature(a_type: str) -> str:
+    if a_type in ["trine", "sextile"]:
+        return "destek"
+    if a_type in ["square", "opposition"]:
+        return "zorlayıcı"
+    return "karışık"
 
 def angle_diff(a, b):
     d = abs(a - b) % 360.0
@@ -307,8 +311,6 @@ def house_score(house: int) -> int:
         return 6
     return 0
 
-ASPECT_WEIGHTS = {"conjunction": 10, "sextile": 8, "trine": 12, "square": -12, "opposition": -14}
-
 def rulership_score(planet: str, sign: str, rulers_map: dict) -> int:
     if rulers_map.get(sign) == planet:
         return 10
@@ -335,38 +337,158 @@ def compute_ruler_strength(ruler: str, planets: dict, aspects: list, rulers_map:
     pos = planets.get(ruler)
     if not pos:
         return {"score": None, "parts": {}, "pos": None}
+
     hs = house_score(int(pos["house"]))
     rs = rulership_score(ruler, pos["sign"], rulers_map)
     aps = aspect_score_for(ruler, aspects)
+
     raw = 50 + hs + rs + aps
     final = clamp(raw)
-    return {"score": round(final, 1), "pos": pos, "parts": {"base": 50, "house": hs, "rulership": rs, "aspects": round(aps, 1)}}
+    return {
+        "score": round(final, 1),
+        "pos": pos,
+        "parts": {"base": 50, "house": hs, "rulership": rs, "aspects": round(aps, 1)},
+    }
 
 def score_label(score):
-    if score is None: return "bilinmiyor"
-    if score >= 75: return "akıcı"
-    if score >= 55: return "orta"
-    if score >= 35: return "zorlayıcı"
+    if score is None:
+        return "bilinmiyor"
+    if score >= 75:
+        return "akıcı"
+    if score >= 55:
+        return "orta"
+    if score >= 35:
+        return "zorlayıcı"
     return "yoğun"
 
-def make_paragraph(root_house, n, result_house, ov_sign, ruler, strength):
+def pick_ruler_with_fallback(ov_sign: str, primary_system: str, planets: dict):
+    """
+    If chosen ruler not found in chart, fallback to other system's ruler.
+    Returns (ruler_name, used_system, fallback_used: bool)
+    """
+    primary_map = RULERS_MODERN if primary_system == "Modern" else RULERS_TRAD
+    alt_map = RULERS_TRAD if primary_system == "Modern" else RULERS_MODERN
+
+    r1 = primary_map[ov_sign]
+    if r1 in planets:
+        return r1, primary_system, False
+
+    alt_system = "Klasik" if primary_system == "Modern" else "Modern"
+    r2 = alt_map[ov_sign]
+    if r2 in planets:
+        return r2, alt_system, True
+
+    # neither present
+    return r1, primary_system, False
+
+def short_action_tips(ov_sign: str, ruler_house: int | None):
+    """
+    Simple, readable action tips.
+    """
+    tips = []
+    if ov_sign == "Yay":
+        tips.append("Eğitim/sertifika, yurtdışı bağlantı veya yayınlama gibi 'ufuk genişleten' bir hamle ekle.")
+        tips.append("Riskli büyümeyi plan–bütçe–takvim ile çerçevele.")
+    elif ov_sign == "Başak":
+        tips.append("Planı küçült: ölç–iyileştir–tekrar et (verim odaklı).")
+        tips.append("Detay/sağlık/iş rutini aksarsa tema zorlanır.")
+    elif ov_sign == "Kova":
+        tips.append("Yeni yöntem/teknoloji veya farklı bir network kanalı dene.")
+        tips.append("Esneklik + net sınır: özgürlük ihtiyacını yönet.")
+    else:
+        tips.append("Bindirme burcunun 'tarzına' uygun küçük bir somut adım seç ve 2 hafta takip et.")
+
+    if ruler_house is not None:
+        tips.append(f"Yönetici {ruler_house}. evde: aksiyonu '{HOUSE_MEANINGS[ruler_house]}' kanalından başlatmak daha verimli olur.")
+    return tips[:3]
+
+def make_readable_comment(root_house, n, result_house, ov_sign, ruler, strength, aspects, topic_name=None, ruler_used_system=None, fallback_used=False):
+    """
+    Human-friendly comment block: summary + bullets + reasons + tips
+    """
     s = strength["score"]
-    pos = strength["pos"]
-    parts = strength["parts"]
     lbl = score_label(s)
-    if s is None:
+
+    # Micro meaning
+    micro_tags, micro_desc = SIGN_MICRO.get(ov_sign, ("", ""))
+
+    # Header line
+    subject = topic_name if topic_name else f"{root_house}. ev ({HOUSE_MEANINGS[root_house]})"
+    header = (
+        f"**Özet:** **{subject}** konusunun **{n}. alt başlığı**, "
+        f"**{result_house}. ev** ({HOUSE_MEANINGS[result_house]}) alanında çalışıyor. "
+        f"Genel akış: **{lbl}**."
+    )
+
+    sys_note = ""
+    if ruler_used_system:
+        sys_note = f" (**Yönetici sistemi:** {ruler_used_system})"
+    if fallback_used:
+        sys_note += " _(haritada bulunmadığı için alternatif yönetici kullanıldı)_"
+
+    base_lines = [
+        f"- **Kök:** {root_house}. ev → {HOUSE_MEANINGS[root_house]}",
+        f"- **Sonuç:** {result_house}. ev → {HOUSE_MEANINGS[result_house]}",
+        f"- **Bindirme burcu:** **{ov_sign}** ({micro_tags})",
+        f"  - {micro_desc}" if micro_desc else "",
+        f"- **Yönetici:** **{ruler}**{sys_note}",
+    ]
+    base_block = "\n".join([x for x in base_lines if x])
+
+    if s is None or strength["pos"] is None:
         return (
-            f"{root_house}. evi 1 kabul edip {n} saydığımızda konu **{result_house}. ev** alanına düşüyor "
-            f"({HOUSE_MEANINGS[result_house]}). Burç bindirmesi **{ov_sign}** ve yöneticisi **{ruler}**. "
-            f"Ancak {ruler} harita verisinde bulunamadığı için skor üretilemedi."
+            header + "\n\n" +
+            base_block + "\n\n" +
+            "⚠️ Yönetici gezegen harita verisinde bulunamadığı için skor/yorum sınırlı."
         )
+
+    pos = strength["pos"]
     retro = " (R)" if pos.get("retro") else ""
+    ruler_loc = f"- **Yönetici konumu:** **{pos['house']}. ev / {pos['sign']}**{retro}"
+    parts = strength["parts"]
+
+    # Ruler aspects
+    ruler_asps = [a for a in aspects if a["p1"] == ruler or a["p2"] == ruler]
+    ruler_asps = sorted(ruler_asps, key=lambda x: x.get("orb", 99))[:5]
+
+    asp_lines = []
+    for a in ruler_asps:
+        other = a["p2"] if a["p1"] == ruler else a["p1"]
+        tr = ASPECT_TR_LABEL.get(a["type"], a["type"])
+        nat = aspect_nature(a["type"])
+        icon = "✅" if nat == "destek" else ("⚠️" if nat == "zorlayıcı" else "⚖️")
+        asp_lines.append(f"  - {icon} {other} ile **{tr}** (orb {a['orb']}) → *{nat}*")
+
+    if asp_lines:
+        asp_block = "**Yönetici açıları (en yakınlar):**\n" + "\n".join(asp_lines)
+    else:
+        asp_block = "**Yönetici açıları:** belirgin orb içi majör açı görünmüyor."
+
+    score_block = (
+        f"**Skor:** **{s}/100** → **{lbl}**\n\n"
+        f"**Skor neden böyle?**\n"
+        f"- Ev vurgusu: {parts['house']:+}\n"
+        f"- Yöneticilik (domicile/detriment): {parts['rulership']:+}\n"
+        f"- Açılar: {parts['aspects']:+}\n"
+    )
+
+    interp = (
+        "**Ne anlatıyor?**\n"
+        f"- {ov_sign} bindirmesi temayı **{micro_tags or 'o burcun tarzı'}** üzerinden çalıştırır.\n"
+        f"- Yönetici {ruler}’ün **{pos['house']}. evde** olması, konunun en çok **{HOUSE_MEANINGS[int(pos['house'])]}** kanalından aktığını gösterir.\n"
+    )
+
+    tips = short_action_tips(ov_sign, int(pos["house"]))
+    tips_block = "**Hızlı aksiyon:**\n" + "\n".join([f"- {t}" for t in tips])
+
     return (
-        f"{root_house}. evi 1 kabul edip {n} saydığımızda konu **{result_house}. ev** alanına düşüyor "
-        f"({HOUSE_MEANINGS[result_house]}). Burç bindirmesi **{ov_sign}**. "
-        f"Yönetici **{ruler}** haritada **{pos['house']}. evde** ve **{pos['sign']}** burcunda{retro}. "
-        f"Genel akış **{lbl}** (skor **{s}/100**). "
-        f"Bileşenler: ev {parts['house']:+}, yöneticilik {parts['rulership']:+}, açılar {parts['aspects']:+}."
+        header + "\n\n" +
+        base_block + "\n" +
+        ruler_loc + "\n\n" +
+        score_block + "\n" +
+        asp_block + "\n\n" +
+        interp + "\n" +
+        tips_block
     )
 
 def default_questions(root_house: int, n: int, result_house: int, ov_sign: str, ruler: str):
@@ -412,17 +534,20 @@ with st.sidebar:
 
     st.divider()
     ruler_system = st.radio("Yöneticilik sistemi", ["Modern", "Klasik"], index=0)
+    allow_fallback = st.checkbox("Yönetici bulunamazsa alternatif yöneticiye düş (önerilir)", value=True)
 
     st.divider()
     st.header("2) Türetme sorusu")
-    pick_mode = st.selectbox("Kök ev seçimi", ["Tema seç", "Ev numarası seç"], index=1)
+    pick_mode = st.selectbox("Kök ev seçimi", ["Tema seç", "Ev numarası seç"], index=0)
     derived_n = st.number_input("Türetilmiş kaçıncı ev? (n)", min_value=1, max_value=12, value=5, step=1)
 
     if pick_mode == "Tema seç":
-        topic = st.selectbox("Tema", list(TOPIC_TO_ROOT.keys()), index=4)
+        topic = st.selectbox("Tema", list(TOPIC_TO_ROOT.keys()), index=1)
         root_house = TOPIC_TO_ROOT[topic]
+        topic_name = topic
     else:
         topic = None
+        topic_name = None
         root_house = st.number_input("Kök ev numarası", min_value=1, max_value=12, value=7, step=1)
 
 # Parse inputs
@@ -458,7 +583,7 @@ with col2:
         st.code("\n".join(planet_errors), language="text")
     if ignored_lines:
         st.write("Görmezden gelinen satırlar (format dışı olabilir):")
-        st.code("\n".join(ignored_lines[:120]), language="text")
+        st.code("\n".join(ignored_lines[:80]), language="text")
     if planets:
         st.write("Okunan gezegen anahtarları:")
         st.code(", ".join(planets.keys()), language="text")
@@ -467,20 +592,27 @@ with col2:
 root_sign = cusp_signs[int(root_house)]
 result_house = derived_house(int(root_house), int(derived_n))
 ov_sign = overlay_sign(root_sign, int(derived_n))
-rulers_map = RULERS_MODERN if ruler_system == "Modern" else RULERS_TRAD
-ruler = get_ruler(ov_sign, ruler_system)
+
+# Choose ruler (with fallback)
+if allow_fallback:
+    ruler, used_system, fallback_used = pick_ruler_with_fallback(ov_sign, ruler_system, planets)
+else:
+    ruler = get_ruler(ov_sign, ruler_system)
+    used_system = ruler_system
+    fallback_used = False
 
 # Aspects & score
 aspects = compute_aspects(planets) if planets else []
-strength = compute_ruler_strength(ruler, planets, aspects, rulers_map)
+rulers_map_used = RULERS_MODERN if used_system == "Modern" else RULERS_TRAD
+strength = compute_ruler_strength(ruler, planets, aspects, rulers_map_used)
 
 st.divider()
 left, right = st.columns([1.15, 0.85], gap="large")
 
 with left:
     st.subheader("🎯 Türetme sonucu")
-    if topic:
-        st.write(f"**Konu:** {topic} → **{int(root_house)}. ev** ({HOUSE_MEANINGS[int(root_house)]})")
+    if topic_name:
+        st.write(f"**Konu:** {topic_name} → **{int(root_house)}. ev** ({HOUSE_MEANINGS[int(root_house)]})")
     else:
         st.write(f"**Kök ev:** **{int(root_house)}. ev** ({HOUSE_MEANINGS[int(root_house)]})")
 
@@ -488,25 +620,19 @@ with left:
     st.write(f"**Türetilmiş (n):** **{int(derived_n)}**")
     st.write(f"**Sonuç ev:** **{result_house}. ev** ({HOUSE_MEANINGS[result_house]})")
     st.write(f"**Burç bindirmesi:** **{ov_sign}**")
-    st.write(f"**{ruler_system} yönetici:** **{ruler}**")
+    st.write(f"**Yönetici:** **{ruler}** (sistem: {used_system})" + (" — _alternatif yönetici kullanıldı_" if fallback_used else ""))
 
     st.divider()
     st.subheader("📈 Skor + Yorum")
+
     score = strength["score"]
     if score is None:
         st.warning(f"Yönetici **{ruler}** harita verisinde yok. (Debug → Okunan gezegen anahtarlarına bak.)")
+        st.markdown(make_readable_comment(int(root_house), int(derived_n), result_house, ov_sign, ruler, strength, aspects, topic_name, used_system, fallback_used))
     else:
-        lbl = score_label(score)
-        if score >= 75:
-            st.success(f"Skor: **{score}/100** → **{lbl}**")
-        elif score >= 55:
-            st.info(f"Skor: **{score}/100** → **{lbl}**")
-        elif score >= 35:
-            st.warning(f"Skor: **{score}/100** → **{lbl}**")
-        else:
-            st.error(f"Skor: **{score}/100** → **{lbl}**")
-
-    st.markdown(make_paragraph(int(root_house), int(derived_n), result_house, ov_sign, ruler, strength))
+        # nice metric-like line
+        st.metric("Skor", f"{score}/100", score_label(score))
+        st.markdown(make_readable_comment(int(root_house), int(derived_n), result_house, ov_sign, ruler, strength, aspects, topic_name, used_system, fallback_used))
 
     st.divider()
     st.subheader("❓ Soru şablonları")
@@ -529,12 +655,21 @@ with right:
     if aspects:
         ruler_asps = [a for a in aspects if a["p1"] == ruler or a["p2"] == ruler]
         st.write(f"Toplam açı: **{len(aspects)}**")
+        st.write(f"Yönetici ({ruler}) açıları: **{len(ruler_asps)}**")
         if ruler_asps:
-            st.write(f"Yönetici ({ruler}) açıları: **{len(ruler_asps)}**")
-            st.dataframe(ruler_asps, use_container_width=True)
+            # add nature column for readability
+            rows = []
+            for a in sorted(ruler_asps, key=lambda x: x.get("orb", 99)):
+                other = a["p2"] if a["p1"] == ruler else a["p1"]
+                rows.append({
+                    "diğer": other,
+                    "açı": ASPECT_TR_LABEL.get(a["type"], a["type"]),
+                    "doğa": aspect_nature(a["type"]),
+                    "orb": a["orb"],
+                })
+            st.dataframe(rows, use_container_width=True)
         else:
-            st.write("Yöneticinin orb içi ana açısı olmayabilir.")
-            st.dataframe(aspects[:20], use_container_width=True)
+            st.write("Yöneticinin orb içi majör açısı olmayabilir.")
     else:
         st.write("Açı üretmek için en az 2 yerleşim okunmalı.")
 
@@ -542,6 +677,6 @@ st.divider()
 st.code(
     f"derived_house(root={int(root_house)}, n={int(derived_n)}) = {result_house}\n"
     f"overlay_sign(root_sign='{root_sign}', n={int(derived_n)}) = '{ov_sign}'\n"
-    f"ruler({ruler_system})('{ov_sign}') = '{ruler}'",
+    f"ruler_used('{ov_sign}') = '{ruler}' (system={used_system}, fallback={fallback_used})",
     language="text"
 )
