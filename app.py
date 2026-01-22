@@ -181,3 +181,65 @@ with right:
 st.divider()
 st.info("Sonraki adım: Haritandan gezegen yerleşimlerini (ev/burç/açı) bu yapıya bağlayıp, yönetici gezegenin durumuna göre otomatik skorlama + paragraf yorum üretebiliriz.")
 
+import re
+
+SIGN_ALIASES = {
+  "Koç":"Koç","Boga":"Boğa","Boğa":"Boğa","Ikizler":"İkizler","İkizler":"İkizler","Yengec":"Yengeç","Yengeç":"Yengeç",
+  "Aslan":"Aslan","Basak":"Başak","Başak":"Başak","Terazi":"Terazi","Akrep":"Akrep","Yay":"Yay","Oglak":"Oğlak","Oğlak":"Oğlak",
+  "Kova":"Kova","Balik":"Balık","Balık":"Balık",
+  # İngilizce
+  "Aries":"Koç","Taurus":"Boğa","Gemini":"İkizler","Cancer":"Yengeç","Leo":"Aslan","Virgo":"Başak","Libra":"Terazi","Scorpio":"Akrep",
+  "Sagittarius":"Yay","Capricorn":"Oğlak","Aquarius":"Kova","Pisces":"Balık",
+  # Semboller (isteğe göre genişletilir)
+  "♈":"Koç","♉":"Boğa","♊":"İkizler","♋":"Yengeç","♌":"Aslan","♍":"Başak","♎":"Terazi","♏":"Akrep","♐":"Yay","♑":"Oğlak","♒":"Kova","♓":"Balık",
+}
+
+def normalize_sign(s: str) -> str:
+    s = s.strip()
+    return SIGN_ALIASES.get(s, s)
+
+def parse_planet_lines(text: str):
+    """
+    Beklenen: Planet SIGN deg°min' house
+    Örn: Sun ♐ 4°26' 7
+    """
+    planets = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+
+        # gezegen adı = ilk kelime
+        parts = line.split()
+        planet = parts[0]
+
+        # burç yakala (sembol veya kelime)
+        # line içinde SIGN_ALIASES anahtarlarından birini arıyoruz
+        sign = None
+        for key in SIGN_ALIASES.keys():
+            if f" {key} " in f" {line} ":
+                sign = normalize_sign(key)
+                break
+        if sign is None:
+            # ikinci token burç olabilir
+            if len(parts) > 1:
+                sign = normalize_sign(parts[1])
+            else:
+                continue
+
+        # derece/dakika/ev yakala
+        m = re.search(r"(\d{1,2})\D+(\d{1,2})\D+(\d{1,2})\s*$", line)
+        if not m:
+            # örn: 4°26' 7 gibi de gelebilir (dakika sonra ev)
+            m = re.search(r"(\d{1,2})\D+(\d{1,2})\D+(\d{1,2})", line)
+        if not m:
+            continue
+
+        deg = int(m.group(1))
+        minute = int(m.group(2))
+        house = int(m.group(3))
+
+        planets[planet] = {"sign": sign, "deg": deg + minute/60.0, "house": house}
+    return planets
+
+
