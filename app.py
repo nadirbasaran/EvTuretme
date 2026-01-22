@@ -32,7 +32,9 @@ SIGN_ALIASES = {
     "♐": "Yay", "♑": "Oğlak", "♒": "Kova", "♓": "Balık",
 }
 
+# Gezegenleri TÜRKÇE anahtara normalize edeceğiz
 PLANET_ALIASES = {
+    # EN -> TR
     "Sun": "Güneş",
     "Moon": "Ay",
     "Mercury": "Merkür",
@@ -43,24 +45,25 @@ PLANET_ALIASES = {
     "Uranus": "Uranüs",
     "Neptune": "Neptün",
     "Pluto": "Plüton",
-
-    # Zaten Türkçe gelirse
-    "Güneş": "Güneş",
-    "Ay": "Ay",
-    "Merkür": "Merkür",
-    "Venüs": "Venüs",
-    "Jüpiter": "Jüpiter",
-    "Satürn": "Satürn",
-    "Uranüs": "Uranüs",
-    "Neptün": "Neptün",
-    "Plüton": "Plüton",
-
-    # Noktalar
+    # Astro-Seek extras
     "Node": "KuzeyAyDüğümü",
     "Lilith": "Lilith",
     "Chiron": "Chiron",
     "Fortune": "Fortuna",
     "Vertex": "Vertex",
+    # TR passthrough
+    "Güneş": "Güneş",
+    "Ay": "Ay",
+    "Merkür": "Merkür",
+    "Venüs": "Venüs",
+    "Mars": "Mars",
+    "Jüpiter": "Jüpiter",
+    "Satürn": "Satürn",
+    "Uranüs": "Uranüs",
+    "Neptün": "Neptün",
+    "Plüton": "Plüton",
+    "KuzeyAyDüğümü": "KuzeyAyDüğümü",
+    "Fortuna": "Fortuna",
 }
 
 RULERS_MODERN = {
@@ -136,20 +139,47 @@ def normalize_sign(token: str):
     return None
 
 def normalize_planet(raw: str) -> str:
-    raw = raw.strip().strip(":").replace(" ", "")
-    if raw.startswith("Node"):
+    """
+    Normalize planet to TURKISH keys:
+    Uranus -> Uranüs, Neptune -> Neptün, etc.
+    Also handles "Node (M)" by mapping to Node.
+    """
+    raw = raw.strip().strip(":")
+    raw = raw.replace("\t", " ").strip()
+
+    # turn "Node (M)" or "Node(M)" into "Node"
+    raw_nospace = raw.replace(" ", "")
+    if raw_nospace.lower().startswith("node"):
         return PLANET_ALIASES.get("Node", "KuzeyAyDüğümü")
+    if raw_nospace.lower().startswith("lilith"):
+        return PLANET_ALIASES.get("Lilith", "Lilith")
+
+    # Remove non letters for matching (safe fallback)
+    raw_clean = re.sub(r"[^A-Za-zÇĞİÖŞÜçğıöşü]", "", raw)
+
     if raw in PLANET_ALIASES:
         return PLANET_ALIASES[raw]
-    return raw
+    if raw_nospace in PLANET_ALIASES:
+        return PLANET_ALIASES[raw_nospace]
+    if raw_clean in PLANET_ALIASES:
+        return PLANET_ALIASES[raw_clean]
+
+    # Try to match English planet names inside raw
+    for en in ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto","Chiron","Fortune","Vertex","Node","Lilith"]:
+        if en.lower() in raw_nospace.lower():
+            return PLANET_ALIASES.get(en, en)
+
+    return raw_clean or raw
 
 # =========================
 # PARSERS
 # =========================
 
-# ✅ FIX: seconds delimiter can be '' (two single quotes) OR double quotes OR ″
-# Example:
+# 1) SPACE/colon format
+# Examples:
 # Sun: Sagittarius 4°26'10''  end of 7  Direct
+# Moon: Leo 0°53'40''  4  Direct
+# Node: Leo 14°23'28''  5  Retrograde
 PLANET_LINE_RE = re.compile(
     r"""^\s*
     (?P<planet>[A-Za-zÇĞİÖŞÜçğıöşü]+(?:\s*\(M\))?)\s*:?\s*
@@ -163,6 +193,21 @@ PLANET_LINE_RE = re.compile(
     re.IGNORECASE | re.VERBOSE
 )
 
+# 2) COMPACT format (no spaces)
+# Examples:
+# UranusScorpio26°23’7
+# MarsCapricorn3°23’9
+PLANET_COMPACT_RE = re.compile(
+    r"""^\s*
+    (?P<planet>[A-Za-zÇĞİÖŞÜçğıöşü]+)
+    (?P<sign>[A-Za-zÇĞİÖŞÜçğıöşü♈♉♊♋♌♍♎♏♐♑♒♓]+)
+    (?P<deg>\d{1,2})\s*°\s*
+    (?P<min>\d{1,2})\s*[’'′]
+    (?P<house>\d{1,2})
+    \s*$""",
+    re.VERBOSE | re.IGNORECASE
+)
+
 def parse_planets_from_text(text: str):
     planets = {}
     errors = []
@@ -173,12 +218,17 @@ def parse_planets_from_text(text: str):
         if not line:
             continue
 
-        # ignore lunar phase / misc lines
+        # ignore lunar phase/misc lines
         if "(" in line and "°" in line and ")" in line and any(w in line.lower() for w in ["disseminating", "balsamic", "gibbous", "crescent", "phase"]):
             ignored.append(line)
             continue
 
         m = PLANET_LINE_RE.match(line)
+
+        # Try compact if not matched
+        if not m:
+            m = PLANET_COMPACT_RE.match(line)
+
         if not m:
             ignored.append(line)
             continue
@@ -191,10 +241,11 @@ def parse_planets_from_text(text: str):
 
         deg = int(m.group("deg"))
         minute = int(m.group("min"))
-        sec = int(m.group("sec")) if m.group("sec") else 0
+        sec = int(m.group("sec")) if m.groupdict().get("sec") else 0
         house = int(m.group("house"))
 
-        motion = (m.group("motion") or "").strip().lower()
+        # motion only exists in LINE_RE
+        motion = (m.groupdict().get("motion") or "").strip().lower()
         retro = motion in ["retrograde", "r"]
 
         deg_float = deg + minute / 60.0 + sec / 3600.0
@@ -207,7 +258,15 @@ def parse_planets_from_text(text: str):
 def parse_house_cusps_from_text(text: str):
     cusps = {}
     errors = []
-    cusp_re = re.compile(r"^\s*(?P<h>[1-9]|1[0-2])\s*:\s*(?P<sign>[A-Za-zÇĞİÖŞÜçğıöşü♈♉♊♋♌♍♎♏♐♑♒♓]+)\b", re.IGNORECASE)
+
+    # Matches:
+    # 1: Taurus (ASC) 2°50’49’’
+    # 7: Scorpio (DESC) 2°50’49’’
+    cusp_re = re.compile(
+        r"^\s*(?P<h>[1-9]|1[0-2])\s*:\s*(?P<sign>[A-Za-zÇĞİÖŞÜçğıöşü♈♉♊♋♌♍♎♏♐♑♒♓]+)\b",
+        re.IGNORECASE
+    )
+
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
@@ -221,6 +280,7 @@ def parse_house_cusps_from_text(text: str):
             errors.append(line)
             continue
         cusps[h] = sign
+
     return cusps, errors
 
 # =========================
@@ -294,12 +354,18 @@ def compute_ruler_strength(ruler: str, planets: dict, aspects: list, rulers_map:
     pos = planets.get(ruler)
     if not pos:
         return {"score": None, "parts": {}, "pos": None}
+
     hs = house_score(int(pos["house"]))
     rs = rulership_score(ruler, pos["sign"], rulers_map)
     aps = aspect_score_for(ruler, aspects)
+
     raw = 50 + hs + rs + aps
     final = clamp(raw)
-    return {"score": round(final, 1), "pos": pos, "parts": {"base": 50, "house": hs, "rulership": rs, "aspects": round(aps, 1)}}
+    return {
+        "score": round(final, 1),
+        "pos": pos,
+        "parts": {"base": 50, "house": hs, "rulership": rs, "aspects": round(aps, 1)},
+    }
 
 def score_label(score):
     if score is None: return "bilinmiyor"
@@ -313,8 +379,14 @@ def make_paragraph(root_house, n, result_house, ov_sign, ruler, strength):
     pos = strength["pos"]
     parts = strength["parts"]
     lbl = score_label(s)
+
     if s is None:
-        return f"Yönetici **{ruler}** harita verisinde bulunamadı; skor üretilemedi."
+        return (
+            f"{root_house}. evi 1 kabul edip {n} saydığımızda konu **{result_house}. ev** alanına düşüyor "
+            f"({HOUSE_MEANINGS[result_house]}). Burç bindirmesi **{ov_sign}** ve yöneticisi **{ruler}**. "
+            f"Ancak {ruler} harita verisinde bulunamadığı için skor üretilemedi."
+        )
+
     retro = " (R)" if pos.get("retro") else ""
     return (
         f"{root_house}. evi 1 kabul edip {n} saydığımızda konu **{result_house}. ev** alanına düşüyor "
@@ -340,15 +412,29 @@ st.title("🏠 Ev Türetme (Derived Houses) + Astro-Seek Kopyala/Yapıştır")
 
 with st.sidebar:
     st.header("1) Harita verisi girişi")
+
     planets_text = st.text_area(
         "Gezegen yerleşimleri (Astro-Seek)",
         height=260,
-        placeholder="Örn:\nSun: Sagittarius 4°26'10''  end of 7  Direct\nMoon: Leo 0°53'40''  4  Direct\nNode: Leo 14°23'28''  5  Retrograde\n...",
+        placeholder=(
+            "Boşluksuz:\n"
+            "UranusScorpio26°23’7\nMarsCapricorn3°23’9\n\n"
+            "Boşluklu:\n"
+            "Uranus: Scorpio 26°23'08''  7  Direct\n"
+            "Sun: Sagittarius 4°26'10''  end of 7  Direct\n"
+        ),
     )
+
     cusps_text = st.text_area(
         "House cusps (opsiyonel)",
         height=180,
-        placeholder="Örn:\n6: Virgo 14°53'37''\n7: Scorpio (DESC) 2°50'49''\n10: Capricorn (MC) 18°03'09''\n...",
+        placeholder=(
+            "Örn:\n"
+            "1: Taurus (ASC) 2°50’49’’\n"
+            "2: Gemini 4°33’55’’\n"
+            "...\n"
+            "10: Capricorn (MC) 18°03’09’’"
+        ),
     )
 
     st.divider()
@@ -357,15 +443,16 @@ with st.sidebar:
     st.divider()
     st.header("2) Türetme sorusu")
     pick_mode = st.selectbox("Kök ev seçimi", ["Tema seç", "Ev numarası seç"], index=1)
-    derived_n = st.number_input("Türetilmiş kaçıncı ev? (n)", min_value=1, max_value=12, value=7, step=1)
+    derived_n = st.number_input("Türetilmiş kaçıncı ev? (n)", min_value=1, max_value=12, value=5, step=1)
 
     if pick_mode == "Tema seç":
         topic = st.selectbox("Tema", list(TOPIC_TO_ROOT.keys()), index=4)
         root_house = TOPIC_TO_ROOT[topic]
     else:
         topic = None
-        root_house = st.number_input("Kök ev numarası", min_value=1, max_value=12, value=5, step=1)
+        root_house = st.number_input("Kök ev numarası", min_value=1, max_value=12, value=7, step=1)
 
+# Parse inputs
 planets, planet_errors, ignored_lines = parse_planets_from_text(planets_text)
 cusps, cusp_errors = parse_house_cusps_from_text(cusps_text)
 
@@ -377,7 +464,7 @@ with col1:
     if planets:
         st.success(f"Okunan yerleşim: {len(planets)}")
     else:
-        st.warning("Gezegen verisi okunamadı. (Artık 10'' formatı destekleniyor; yine olmuyorsa Debug’a bak.)")
+        st.warning("Gezegen verisi okunamadı. (Debug bölümünde görmezden gelinen satırları kontrol et.)")
 
     if cusps:
         st.success(f"Okunan cusps: {len(cusps)}/12")
@@ -393,22 +480,24 @@ with col1:
 
 with col2:
     st.subheader("🧪 Debug")
-    if ignored_lines:
-        st.write("Görmezden gelinen satırlar:")
-        st.code("\n".join(ignored_lines[:80]), language="text")
     if planet_errors:
         st.error("Hata verilen satırlar:")
         st.code("\n".join(planet_errors), language="text")
-    if cusp_errors:
-        st.error("Cusp satır hataları:")
-        st.code("\n".join(cusp_errors), language="text")
+    if ignored_lines:
+        st.write("Görmezden gelinen satırlar (format dışı olabilir):")
+        st.code("\n".join(ignored_lines[:80]), language="text")
+    if planets:
+        st.write("Okunan gezegen anahtarları:")
+        st.code(", ".join(planets.keys()), language="text")
 
+# Derived result
 root_sign = cusp_signs[int(root_house)]
 result_house = derived_house(int(root_house), int(derived_n))
 ov_sign = overlay_sign(root_sign, int(derived_n))
 rulers_map = RULERS_MODERN if ruler_system == "Modern" else RULERS_TRAD
 ruler = get_ruler(ov_sign, ruler_system)
 
+# Aspects & score
 aspects = compute_aspects(planets) if planets else []
 strength = compute_ruler_strength(ruler, planets, aspects, rulers_map)
 
@@ -417,7 +506,11 @@ left, right = st.columns([1.15, 0.85], gap="large")
 
 with left:
     st.subheader("🎯 Türetme sonucu")
-    st.write(f"**Kök ev:** **{int(root_house)}. ev** ({HOUSE_MEANINGS[int(root_house)]})")
+    if topic:
+        st.write(f"**Konu:** {topic} → **{int(root_house)}. ev** ({HOUSE_MEANINGS[int(root_house)]})")
+    else:
+        st.write(f"**Kök ev:** **{int(root_house)}. ev** ({HOUSE_MEANINGS[int(root_house)]})")
+
     st.write(f"**Kök ev cusp burcu:** **{root_sign}**")
     st.write(f"**Türetilmiş (n):** **{int(derived_n)}**")
     st.write(f"**Sonuç ev:** **{result_house}. ev** ({HOUSE_MEANINGS[result_house]})")
@@ -428,7 +521,7 @@ with left:
     st.subheader("📈 Skor + Yorum")
     score = strength["score"]
     if score is None:
-        st.warning(f"Yönetici **{ruler}** harita verisinde yok.")
+        st.warning(f"Yönetici **{ruler}** harita verisinde yok. (Okunan gezegen anahtarlarını Debug’da kontrol et.)")
     else:
         lbl = score_label(score)
         if score >= 75:
@@ -439,6 +532,7 @@ with left:
             st.warning(f"Skor: **{score}/100** → **{lbl}**")
         else:
             st.error(f"Skor: **{score}/100** → **{lbl}**")
+
     st.markdown(make_paragraph(int(root_house), int(derived_n), result_house, ov_sign, ruler, strength))
 
     st.divider()
@@ -452,6 +546,7 @@ with right:
         pos = strength["pos"]
         retro = " (R)" if pos.get("retro") else ""
         st.write(f"**{ruler}** → {pos['sign']} {pos['deg']:.3f}° | **{pos['house']}. ev**{retro}")
+        st.write("**Puan bileşenleri:**")
         st.json(strength["parts"])
     else:
         st.write("Yönetici konumu yok.")
