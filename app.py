@@ -43,7 +43,19 @@ PLANET_ALIASES = {
     "Uranus": "Uranüs",
     "Neptune": "Neptün",
     "Pluto": "Plüton",
-    # extra points
+
+    # Zaten Türkçe gelirse
+    "Güneş": "Güneş",
+    "Ay": "Ay",
+    "Merkür": "Merkür",
+    "Venüs": "Venüs",
+    "Jüpiter": "Jüpiter",
+    "Satürn": "Satürn",
+    "Uranüs": "Uranüs",
+    "Neptün": "Neptün",
+    "Plüton": "Plüton",
+
+    # Noktalar
     "Node": "KuzeyAyDüğümü",
     "Lilith": "Lilith",
     "Chiron": "Chiron",
