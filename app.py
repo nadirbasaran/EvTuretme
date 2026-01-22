@@ -1,6 +1,5 @@
 import streamlit as st
 import re
-from math import fabs
 
 # =========================
 # CONSTANTS
@@ -44,22 +43,17 @@ PLANET_ALIASES = {
     "Uranus": "Uranüs",
     "Neptune": "Neptün",
     "Pluto": "Plüton",
-
-    # extra points (Astro-Seek)
+    # extra points
     "Node": "KuzeyAyDüğümü",
-    "Node(M)": "KuzeyAyDüğümü",
-    "NorthNode": "KuzeyAyDüğümü",
-    "SouthNode": "GüneyAyDüğümü",
     "Lilith": "Lilith",
-    "Lilith(M)": "Lilith",
     "Chiron": "Chiron",
     "Fortune": "Fortuna",
     "Vertex": "Vertex",
-
     # TR passthrough
     "Güneş": "Güneş", "Ay": "Ay", "Merkür": "Merkür", "Venüs": "Venüs",
     "Mars": "Mars", "Jüpiter": "Jüpiter", "Satürn": "Satürn",
     "Uranüs": "Uranüs", "Neptün": "Neptün", "Plüton": "Plüton",
+    "KuzeyAyDüğümü": "KuzeyAyDüğümü",
 }
 
 RULERS_MODERN = {
@@ -125,55 +119,66 @@ def overlay_sign(root_sign: str, n: int) -> str:
 def get_ruler(sign: str, system: str) -> str:
     return (RULERS_MODERN if system == "Modern" else RULERS_TRAD)[sign]
 
-# =========================
-# PARSERS (handles NO-SPACES Astro-Seek lines)
-# =========================
-def normalize_sign(s: str) -> str | None:
-    s = s.strip()
-    if s in SIGN_ALIASES:
-        return SIGN_ALIASES[s]
+def normalize_sign(token: str):
+    token = token.strip()
+    if token in SIGN_ALIASES:
+        return SIGN_ALIASES[token]
+    # case-insensitive
     for k, v in SIGN_ALIASES.items():
-        if k.lower() == s.lower():
+        if k.lower() == token.lower():
             return v
     return None
 
 def normalize_planet(raw: str) -> str:
-    raw = raw.strip()
-    raw = raw.replace(" ", "")
-    # Node (M) -> Node(M)
-    raw = raw.replace("(M)", "(M)").replace("(m)", "(M)")
-    if raw in PLANET_ALIASES:
-        return PLANET_ALIASES[raw]
-    # Try to detect "Node(M)" pattern
-    if raw.startswith("Node") and "(M)" in raw:
-        return PLANET_ALIASES.get("Node(M)", "KuzeyAyDüğümü")
-    if raw.startswith("Lilith") and "(M)" in raw:
-        return PLANET_ALIASES.get("Lilith(M)", "Lilith")
-    return PLANET_ALIASES.get(raw, raw)
+    raw = raw.strip().strip(":")
+    # Keep only letters + () for "Node (M)" style
+    raw2 = raw.replace(" ", "")
+    # reduce Node(M) / Lilith(M)
+    raw2 = raw2.replace("(m)", "(M)")
+    if raw2.startswith("Node"):
+        return PLANET_ALIASES.get("Node", "KuzeyAyDüğümü")
+    if raw2.startswith("Lilith"):
+        return PLANET_ALIASES.get("Lilith", "Lilith")
+    if raw2 in PLANET_ALIASES:
+        return PLANET_ALIASES[raw2]
+    # fallback: try raw without punctuation
+    raw3 = re.sub(r"[^A-Za-zÇĞİÖŞÜçğıöşü]", "", raw)
+    return PLANET_ALIASES.get(raw3, raw3)
 
-# Build a regex alternation for sign keys (longest first to avoid partial matches)
-_SIGN_KEYS_SORTED = sorted(SIGN_ALIASES.keys(), key=len, reverse=True)
-SIGN_ALT = "(" + "|".join(map(re.escape, _SIGN_KEYS_SORTED)) + ")"
+# =========================
+# PARSERS
+# =========================
 
-# This matches lines like:
-# SunSagittarius4°26’7
-# MercuryScorpio16°24’7
-# Node (M)Leo14°23’5 R
-# Lilith (M)Libra26°14’6
-# FortuneSagittarius29°18’9
-# VertexLibra14°12’6
-# Also tolerant to missing spaces and different apostrophes.
-LINE_RE = re.compile(
-    rf"""^\s*
-    (?P<body>.+?)                                   # planet name part (greedy minimal)
-    {SIGN_ALT}                                       # sign token
-    \s*
-    (?P<deg>\d{{1,2}})\s*°?\s*                       # degrees
-    (?P<min>\d{{1,2}})\s*[’'′]?\s*                   # minutes
-    (?P<house>\d{{1,2}})\s*                          # house number
-    (?P<retro>R)?\s*$                                # optional retro flag
+# Planet line regex that matches BOTH:
+# 1) "SunSagittarius4°26’7"
+# 2) "Sun: Sagittarius 4°26'10''  end of 7  Direct"
+# 3) "Node: Leo 14°23'28''  5  Retrograde"
+PLANET_LINE_RE = re.compile(
+    r"""^\s*
+    (?P<planet>[A-Za-zÇĞİÖŞÜçğıöşü]+(?:\s*\(M\))?)\s*:?\s*
+    (?P<sign>[A-Za-zÇĞİÖŞÜçğıöşü♈♉♊♋♌♍♎♏♐♑♒♓]+)\s*
+    (?P<deg>\d{1,2})\s*°\s*
+    (?P<min>\d{1,2})\s*['’′]\s*
+    (?:(?P<sec>\d{1,2})\s*["”″]{1,2}\s*)?
+    (?:(?:end\s+of\s+)?(?P<house>\d{1,2}))\s*
+    (?P<motion>Direct|Retrograde|R)?\s*$
     """,
-    re.VERBOSE
+    re.IGNORECASE | re.VERBOSE
+)
+
+# Compact fallback: "SunSagittarius4°26’7" (no spaces/colons)
+# (sec optional)
+PLANET_COMPACT_RE = re.compile(
+    r"""^\s*
+    (?P<planet>[A-Za-zÇĞİÖŞÜçğıöşü]+(?:\s*\(M\))?)\s*
+    (?P<sign>[A-Za-zÇĞİÖŞÜçğıöşü♈♉♊♋♌♍♎♏♐♑♒♓]+)
+    (?P<deg>\d{1,2})\s*°\s*
+    (?P<min>\d{1,2})\s*['’′]
+    (?:(?P<sec>\d{1,2})\s*["”″]{1,2})?
+    (?P<house>\d{1,2})\s*
+    (?P<motion>Direct|Retrograde|R)?\s*$
+    """,
+    re.IGNORECASE | re.VERBOSE
 )
 
 def parse_planets_from_text(text: str):
@@ -186,44 +191,36 @@ def parse_planets_from_text(text: str):
         if not line:
             continue
 
-        # ignore obvious non-position lines like "Disseminating (236°27’)"
-        if "°" in line and "(" in line and ")" in line and any(w in line.lower() for w in ["disseminating", "balsamic", "gibbous", "crescent", "phase"]):
+        # ignore lunar phase / misc lines
+        if "(" in line and "°" in line and ")" in line and any(w in line.lower() for w in ["disseminating", "balsamic", "gibbous", "crescent", "phase"]):
             ignored.append(line)
             continue
 
-        m = LINE_RE.match(line.replace("’", "'").replace("′", "'"))
+        m = PLANET_LINE_RE.match(line)
         if not m:
-            # Try a fallback where spaces are removed completely
-            compact = re.sub(r"\s+", "", line.replace("’", "'").replace("′", "'"))
-            m2 = LINE_RE.match(compact)
-            if not m2:
-                ignored.append(line)
-                continue
-            m = m2
+            # try compact version (remove spaces)
+            compact = re.sub(r"\s+", "", line)
+            m = PLANET_COMPACT_RE.match(compact)
 
-        # planet "body" could include spaces like "Node (M)"
-        body = m.group("body").strip()
-        body = re.sub(r"\s+", "", body)  # remove spaces: Node(M)
-        body = body.replace("(m)", "(M)")
-        if body == "Node(M)" or body.startswith("Node(M)"):
-            planet = normalize_planet("Node(M)")
-        elif body == "Lilith(M)" or body.startswith("Lilith(M)"):
-            planet = normalize_planet("Lilith(M)")
-        else:
-            planet = normalize_planet(body)
+        if not m:
+            ignored.append(line)
+            continue
 
-        sign_token = m.group(1)  # the SIGN_ALT capture group
-        sign = normalize_sign(sign_token)
+        planet = normalize_planet(m.group("planet"))
+        sign = normalize_sign(m.group("sign"))
         if sign not in SIGN_TO_IDX:
             errors.append(line)
             continue
 
         deg = int(m.group("deg"))
         minute = int(m.group("min"))
+        sec = int(m.group("sec")) if m.group("sec") else 0
         house = int(m.group("house"))
-        retro = True if m.group("retro") else False
 
-        deg_float = deg + minute / 60.0
+        motion = (m.group("motion") or "").strip().lower()
+        retro = motion in ["retrograde", "r"]
+
+        deg_float = deg + minute / 60.0 + sec / 3600.0
         lon = SIGN_TO_IDX[sign] * 30.0 + deg_float
 
         planets[planet] = {"sign": sign, "deg": deg_float, "house": house, "lon": lon, "retro": retro}
@@ -234,34 +231,21 @@ def parse_house_cusps_from_text(text: str):
     cusps = {}
     errors = []
 
-    house_re = re.compile(r"(?i)\b(?:house\s*)?([1-9]|1[0-2])(?:st|nd|rd|th)?\b")
+    # Matches: "6: Virgo ...", "7: Scorpio (DESC)...", "10: Capricorn (MC)..."
+    cusp_re = re.compile(r"^\s*(?P<h>[1-9]|1[0-2])\s*:\s*(?P<sign>[A-Za-zÇĞİÖŞÜçğıöşü♈♉♊♋♌♍♎♏♐♑♒♓]+)\b")
 
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
             continue
-
-        hm = house_re.search(line)
-        if not hm:
+        m = cusp_re.match(line)
+        if not m:
             continue
-        h = int(hm.group(1))
-
-        sign = None
-        for tok in line.split():
-            ns = normalize_sign(tok)
-            if ns in SIGN_TO_IDX:
-                sign = ns
-                break
-        if sign is None:
-            for k in SIGN_ALIASES.keys():
-                if re.search(rf"\b{re.escape(k)}\b", line):
-                    sign = SIGN_ALIASES[k]
-                    break
-
-        if sign is None:
+        h = int(m.group("h"))
+        sign = normalize_sign(m.group("sign"))
+        if sign not in SIGN_TO_IDX:
             errors.append(line)
             continue
-
         cusps[h] = sign
 
     return cusps, errors
@@ -297,7 +281,7 @@ def compute_aspects(planets: dict):
     return aspects
 
 # =========================
-# SCORING + TEXT
+# SCORING
 # =========================
 ANGULAR = {1, 4, 7, 10}
 SUCCEDENT = {2, 5, 8, 11}
@@ -357,7 +341,7 @@ def compute_ruler_strength(ruler: str, planets: dict, aspects: list, rulers_map:
         "parts": {"base": 50, "house": hs, "rulership": rs, "aspects": round(aps, 1)},
     }
 
-def score_label(score: float | None) -> str:
+def score_label(score):
     if score is None:
         return "bilinmiyor"
     if score >= 75:
@@ -380,44 +364,42 @@ def make_paragraph(root_house, n, result_house, ov_sign, ruler, strength):
             f"Burç bindirmesi {ov_sign} ve yöneticisi {ruler}. Ancak harita verisinde **{ruler}** bulunamadığı için skor/ton analizi yapılamadı."
         )
 
+    retro = " (R)" if pos.get("retro") else ""
     return (
         f"{root_house}. evi 1 kabul edip {n} saydığımızda konu **{result_house}. ev** alanına düşüyor "
-        f"({HOUSE_MEANINGS[result_house]}). Burç bindirmesi **{ov_sign}** olduğu için süreç {ov_sign} temalarıyla şekilleniyor. "
-        f"Bu yapının ana anahtarı **{ruler}**: haritada **{pos['house']}. evde** ve **{pos['sign']}** burcunda. "
+        f"({HOUSE_MEANINGS[result_house]}). Burç bindirmesi **{ov_sign}**. "
+        f"Yönetici **{ruler}** haritada **{pos['house']}. evde** ve **{pos['sign']}** burcunda{retro}. "
         f"Genel akış **{lbl}** (skor **{s}/100**). "
-        f"Puan bileşenleri: ev {parts['house']:+}, yöneticilik {parts['rulership']:+}, açılar {parts['aspects']:+}."
+        f"Bileşenler: ev {parts['house']:+}, yöneticilik {parts['rulership']:+}, açılar {parts['aspects']:+}."
     )
 
-def default_questions(root_house: int, n: int, result_house: int, ov_sign: str, ruler: str) -> list[str]:
-    root_mean = HOUSE_MEANINGS[root_house]
-    res_mean = HOUSE_MEANINGS[result_house]
+def default_questions(root_house: int, n: int, result_house: int, ov_sign: str, ruler: str):
     return [
-        f"{root_mean} konusunun {n}. alt başlığı hangi koşullarda gelişiyor? (Bindirme: {ov_sign})",
-        f"Bu konu en çok {res_mean} alanında nasıl görünür? (Sonuç ev: {result_house})",
-        f"Yönetici {ruler} haritada nerede? (Ev/burç) Bu konu ‘nereden çalışıyor’u gösterir.",
-        f"{ruler}’ün güçlü/zorlayıcı açıları hangileri? (Sağdaki listede görülür.)",
+        f"{HOUSE_MEANINGS[root_house]} konusunun {n}. alt başlığı hangi koşullarda ilerliyor? (Bindirme: {ov_sign})",
+        f"Bu tema {HOUSE_MEANINGS[result_house]} alanında nasıl görünür? (Sonuç ev: {result_house})",
+        f"Yönetici {ruler} hangi evde/burçta? Bu, konunun çalıştığı kanalı gösterir.",
+        f"{ruler}’ün güçlü/zorlayıcı açıları hangileri? (Sağ panelde listelenir.)",
     ]
 
 # =========================
-# APP
+# UI
 # =========================
-st.set_page_config(page_title="Ev Türetme + Astro-Seek Kopyala/Yapıştır", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="Ev Türetme + Astro-Seek", layout="wide", page_icon="🏠")
 st.title("🏠 Ev Türetme (Derived Houses) + Astro-Seek Kopyala/Yapıştır")
-
-st.caption("Astro-Seek’ten gezegen satırlarını boşluksuz bile kopyalasan okur. Sonra kök ev + türetilmiş n seçip yorum alırsın.")
 
 with st.sidebar:
     st.header("1) Harita verisi girişi")
+
     planets_text = st.text_area(
-        "Gezegen yerleşimleri (Astro-Seek kopyala-yapıştır)",
-        height=280,
-        placeholder="Örnek:\nSunSagittarius4°26’7\nMoonLeo0°53’4\nMercuryScorpio16°24’7\n...\nNode (M)Leo14°23’5 R\nFortuneSagittarius29°18’9",
+        "Gezegen yerleşimleri (Astro-Seek)",
+        height=260,
+        placeholder="Örn:\nSun: Sagittarius 4°26'10''  end of 7  Direct\nMoon: Leo 0°53'40''  4  Direct\n...",
     )
 
     cusps_text = st.text_area(
         "House cusps (opsiyonel)",
         height=180,
-        placeholder="Yapıştırırsan otomatik alır. Yapıştırmazsan alttan manuel seçersin.",
+        placeholder="Örn:\n6: Virgo 14°53'37''\n7: Scorpio (DESC) 2°50'49''\n10: Capricorn (MC) 18°03'09''\n...",
     )
 
     st.divider()
@@ -447,12 +429,12 @@ with col1:
     if planets:
         st.success(f"Okunan yerleşim: {len(planets)}")
     else:
-        st.warning("Gezegen verisi okunamadı. (Yapıştırdığın metinde gezegen satırları yok gibi görünüyor.)")
+        st.warning("Gezegen verisi okunamadı. (Yapıştırdığın format artık destekleniyor; yine olmuyorsa Debug kısmında satırları gör.)")
 
     if cusps:
         st.success(f"Okunan cusps: {len(cusps)}/12")
     else:
-        st.info("Cusps yapıştırmadın (sorun değil). Aşağıdan manuel seçebilirsin.")
+        st.info("Cusps yoksa sorun değil; aşağıdan manuel seçebilirsin.")
 
     st.subheader("🏠 Ev cusp burçları (manuel/otomatik)")
     cusp_signs = {}
@@ -464,11 +446,11 @@ with col1:
 with col2:
     st.subheader("🧪 Debug")
     if planet_errors:
-        st.error("Hata verilen satırlar (nadir):")
+        st.error("Hata verilen satırlar:")
         st.code("\n".join(planet_errors), language="text")
     if ignored_lines:
-        st.write("Görmezden gelinen satırlar (normal):")
-        st.code("\n".join(ignored_lines[:30]), language="text")
+        st.write("Görmezden gelinen satırlar (normal olabilir):")
+        st.code("\n".join(ignored_lines[:60]), language="text")
     if cusp_errors:
         st.error("Cusp satır hataları:")
         st.code("\n".join(cusp_errors), language="text")
@@ -504,7 +486,7 @@ with left:
     st.subheader("📈 Skor + Yorum")
     score = strength["score"]
     if score is None:
-        st.warning(f"Yönetici gezegen **{ruler}** harita verisinde bulunamadı. (Örn: Uranüs satırı yoksa.)")
+        st.warning(f"Yönetici **{ruler}** harita verisinde yok. (Örn: Uranus/Uranüs satırı yoksa.)")
     else:
         lbl = score_label(score)
         if score >= 75:
@@ -528,7 +510,7 @@ with right:
     if strength["pos"]:
         pos = strength["pos"]
         retro = " (R)" if pos.get("retro") else ""
-        st.write(f"**{ruler}** → {pos['sign']} {pos['deg']:.2f}° | **{pos['house']}. ev**{retro}")
+        st.write(f"**{ruler}** → {pos['sign']} {pos['deg']:.3f}° | **{pos['house']}. ev**{retro}")
         st.write("**Puan bileşenleri:**")
         st.json(strength["parts"])
     else:
@@ -543,7 +525,7 @@ with right:
             st.write(f"Yönetici ({ruler}) açıları: **{len(ruler_asps)}**")
             st.dataframe(ruler_asps, use_container_width=True)
         else:
-            st.write("Yöneticinin orb içi ana açısı yok olabilir.")
+            st.write("Yöneticinin orb içi ana açısı olmayabilir.")
             st.dataframe(aspects[:20], use_container_width=True)
     else:
         st.write("Açı üretmek için en az 2 yerleşim okunmalı.")
